@@ -33,3 +33,17 @@ def save_table_data(table_name, data):
 
     with open(filepath, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
+
+
+def create_cacher():
+    cache = {}
+
+    def cache_result(key, value_func):
+        if key in cache:
+            return cache[key]
+
+        result = value_func()
+        cache[key] = result
+        return result
+
+    return cache_result

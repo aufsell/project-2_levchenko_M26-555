@@ -15,6 +15,7 @@ from primitive_db.core import (
 )
 from primitive_db.parser import parse_insert, parse_set, parse_where
 from primitive_db.utils import (
+    create_cacher,
     load_metadata,
     load_table_data,
     save_metadata,
@@ -23,54 +24,44 @@ from primitive_db.utils import (
 
 
 def print_help():
-    """Prints the help message for the current mode."""
-
-    print("\n***Процесс работы с таблицей***")
+    print("\n***База данных***")
     print("Функции:")
-    print("<command> create_table <имя_таблицы> <столбец1:тип> .. - создать таблицу")
-    print("<command> list_tables - показать список всех таблиц")
-    print("<command> drop_table <имя_таблицы> - удалить таблицу")
-
-    print("\nОбщие команды:")
-    print("<command> exit - выход из программы")
-    print("<command> help - справочная информация\n")
-
-
-def welcome():
-    print("Первая попытка запустить проект!")
-    print()
-    print("***")
-
-    while True:
-        print("<command> exit - выйти из программы")
-        print("<command> help - справочная информация")
-
-        command = prompt.string("Введите команду: ")
-
-        if command == "exit":
-            break
-        elif command == "help":
-            print()
+    print("<command> create_table <имя> <столбец:тип> ... - создать таблицу")
+    print("<command> list_tables - показать список таблиц")
+    print("<command> drop_table <имя> - удалить таблицу")
+    print("<command> insert into <имя> values (...) - добавить запись")
+    print("<command> select from <имя> [where <поле> = <значение>] - найти записи")
+    print("<command> update <имя> set <поле> = <значение> where ... - обновить")
+    print("<command> delete from <имя> where <поле> = <значение> - удалить запись")
+    print("<command> info <имя> - информация о таблице")
+    print("<command> exit - выйти")
+    print("<command> help - справка\n")
 
 
 def run():
     print_help()
+    cacher = create_cacher()
 
     while True:
         try:
             user_input = prompt.string("Введите команду: ")
             parts = shlex.split(user_input)
+
             if not parts:
                 continue
+
             command, *args = parts
+
             if command == "exit":
-                if len(args) != 0:
+                if args:
                     raise ValueError("Для этой функции не требуются параметры")
                 break
+
             elif command == "help":
-                if len(args) != 0:
+                if args:
                     raise ValueError("Для этой функции не требуются параметры")
                 print_help()
+
             elif command == "create_table":
                 if len(args) < 2:
                     raise ValueError("Для этой функции требуются минимум 2 параметра")
@@ -79,13 +70,16 @@ def run():
                 table_name = args[0]
                 columns = args[1:]
                 new_metadata = create_table(metadata, table_name, columns)
-                save_metadata("db_meta.json", new_metadata)
 
+                if new_metadata is None:
+                    continue
+
+                save_metadata("db_meta.json", new_metadata)
+                cacher = create_cacher()
                 columns_str = ", ".join(
                     f"{name}:{dtype}"
                     for name, dtype in new_metadata[table_name].items()
                 )
-
                 print(
                     f'Таблица "{table_name}" успешно создана '
                     f"со столбцами: {columns_str}"
@@ -98,6 +92,9 @@ def run():
                 metadata = load_metadata("db_meta.json")
                 tables = list_tables(metadata)
 
+                if tables is None:
+                    continue
+
                 if not tables:
                     print("Таблиц пока нет.")
                 else:
@@ -106,24 +103,34 @@ def run():
 
             elif command == "drop_table":
                 if len(args) != 1:
-                    raise ValueError("Для этой функции требуется параметр с названием")
+                    raise ValueError("Для этой функции требуется название таблицы")
+
                 metadata = load_metadata("db_meta.json")
                 table_name = args[0]
                 new_metadata = drop_table(metadata, table_name)
+
+                if new_metadata is None:
+                    continue
+
                 save_metadata("db_meta.json", new_metadata)
+                cacher = create_cacher()
                 filepath = Path("data") / f"{table_name}.json"
+
                 if filepath.exists():
                     filepath.unlink()
+
                 print(f'Таблица "{table_name}" успешно удалена')
 
             elif command == "insert":
                 table_name, values = parse_insert(user_input)
-
                 metadata = load_metadata("db_meta.json")
                 table_data = insert(metadata, table_name, values)
 
-                save_table_data(table_name, table_data)
+                if table_data is None:
+                    continue
 
+                save_table_data(table_name, table_data)
+                cacher = create_cacher()
                 print(
                     f"Запись с ID={table_data[-1]['ID']} "
                     f'успешно добавлена в таблицу "{table_name}".'
@@ -142,19 +149,32 @@ def run():
                 where_clause = None
 
                 if len(args) > 2:
-                    if args[2] != "where" or len(args) < 4:
+                    if len(args) < 4 or args[2] != "where":
                         raise ValueError("Некорректный формат команды select")
 
                     condition = user_input.split(" where ", maxsplit=1)[1]
                     where_clause = parse_where(condition)
 
-                    column_name = next(iter(where_clause))
-
-                    if column_name not in metadata[table_name]:
-                        raise ValueError(f'Столбец "{column_name}" не существует')
+                    for name, value in where_clause.items():
+                        if name not in metadata[table_name]:
+                            raise ValueError(f'Столбец "{name}" не существует')
+                        if type(value).__name__ != metadata[table_name][name]:
+                            raise ValueError(f"Некорректный тип значения для {name}")
 
                 table_data = load_table_data(table_name)
-                result = select(table_data, where_clause)
+
+                cache_key = (
+                    table_name,
+                    tuple(sorted(where_clause.items())) if where_clause else None,
+                )
+
+                result = cacher(
+                    cache_key,
+                    lambda: select(table_data, where_clause),
+                )
+
+                if result is None:
+                    continue
 
                 table = PrettyTable()
                 table.field_names = list(metadata[table_name].keys())
@@ -165,11 +185,12 @@ def run():
                 print(table)
 
             elif command == "update":
-                if " set " not in user_input or " where " not in user_input:
+                if len(args) < 2 or " set " not in user_input:
+                    raise ValueError("Некорректный формат команды update")
+                if " where " not in user_input:
                     raise ValueError("Некорректный формат команды update")
 
                 table_name = args[0]
-
                 metadata = load_metadata("db_meta.json")
 
                 if table_name not in metadata:
@@ -177,39 +198,36 @@ def run():
 
                 set_part = user_input.split(" set ", maxsplit=1)[1]
                 set_part, where_part = set_part.split(" where ", maxsplit=1)
-
                 set_clause = parse_set(set_part)
                 where_clause = parse_where(where_part)
 
                 for name, value in set_clause.items():
                     if name not in metadata[table_name]:
                         raise ValueError(f'Столбец "{name}" не существует')
-
                     if name == "ID":
                         raise ValueError("Нельзя изменять ID записи")
-
-                    column_type = metadata[table_name][name]
-
-                    if type(value).__name__ != column_type:
+                    if type(value).__name__ != metadata[table_name][name]:
                         raise ValueError(f"Некорректный тип значения для {name}")
 
                 for name, value in where_clause.items():
                     if name not in metadata[table_name]:
                         raise ValueError(f'Столбец "{name}" не существует')
-
-                    column_type = metadata[table_name][name]
-
-                    if type(value).__name__ != column_type:
+                    if type(value).__name__ != metadata[table_name][name]:
                         raise ValueError(f"Некорректный тип значения для {name}")
 
                 table_data = load_table_data(table_name)
-                new_data, updated_ids = update(table_data, set_clause, where_clause)
+                result = update(table_data, set_clause, where_clause)
 
-                save_table_data(table_name, new_data)
+                if result is None:
+                    continue
+
+                new_data, updated_ids = result
 
                 if not updated_ids:
                     print("Подходящих записей не найдено")
                 else:
+                    save_table_data(table_name, new_data)
+                    cacher = create_cacher()
                     for row_id in updated_ids:
                         print(
                             f'Запись с ID={row_id} в таблице "{table_name}" '
@@ -217,7 +235,7 @@ def run():
                         )
 
             elif command == "delete":
-                if len(args) < 5 or args[0] != "from" or args[2] != "where":
+                if len(args) < 4 or args[0] != "from" or args[2] != "where":
                     raise ValueError("Некорректный формат команды delete")
 
                 table_name = args[1]
@@ -232,18 +250,22 @@ def run():
                 for name, value in where_clause.items():
                     if name not in metadata[table_name]:
                         raise ValueError(f'Столбец "{name}" не существует')
-
                     if type(value).__name__ != metadata[table_name][name]:
                         raise ValueError(f"Некорректный тип значения для {name}")
 
                 table_data = load_table_data(table_name)
-                new_data, deleted_ids = delete(table_data, where_clause)
+                result = delete(table_data, where_clause)
+
+                if result is None:
+                    continue
+
+                new_data, deleted_ids = result
 
                 if not deleted_ids:
                     print("Подходящих записей не найдено")
                 else:
                     save_table_data(table_name, new_data)
-
+                    cacher = create_cacher()
                     for row_id in deleted_ids:
                         print(
                             f"Запись с ID={row_id} успешно удалена "
@@ -262,7 +284,6 @@ def run():
 
                 table_data = load_table_data(table_name)
                 columns = metadata[table_name]
-
                 columns_str = ", ".join(
                     f"{name}:{dtype}" for name, dtype in columns.items()
                 )
