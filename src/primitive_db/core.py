@@ -1,3 +1,6 @@
+from primitive_db.utils import load_table_data
+
+
 def create_table(metadata, table_name, columns):
     table_columns = {"ID": "int"}
     seen_columns = set()
@@ -17,14 +20,14 @@ def create_table(metadata, table_name, columns):
         if column_type not in allowed_types:
             raise ValueError(f"Некорректный тип поля {column_type}")
         if name == "ID" and column_type != "int":
-            raise ValueError (f"Некорректный тип поля {column_type}")
+            raise ValueError(f"Некорректный тип поля {column_type}")
 
         if name in seen_columns:
             raise ValueError(f"Дублируется поле {name}")
         seen_columns.add(name)
-        
+
         table_columns[name] = column_type
-        
+
     metadata[table_name] = table_columns
     return metadata
 
@@ -36,5 +39,80 @@ def drop_table(metadata, table_name):
     del metadata[table_name]
     return metadata
 
+
 def list_tables(metadata):
     return list(metadata.keys())
+
+
+def insert(metadata, table_name, values):
+    if table_name not in metadata:
+        raise ValueError(f'Таблица "{table_name}" не существует.')
+
+    columns = {
+        name: dtype for name, dtype in metadata[table_name].items() if name != "ID"
+    }
+
+    if len(values) != len(columns):
+        raise ValueError(f"Ожидалось {len(columns)} значений, получено {len(values)}.")
+
+    type_map = {
+        "int": int,
+        "str": str,
+        "bool": bool,
+    }
+
+    for (name, dtype), value in zip(columns.items(), values):
+        if type(value) is not type_map[dtype]:
+            raise ValueError(
+                f'Столбец "{name}" ожидает тип {dtype}, получен {type(value).__name__}.'
+            )
+
+    table_data = load_table_data(table_name)
+
+    new_id = max((row["ID"] for row in table_data), default=0) + 1
+
+    new_row = {"ID": new_id}
+    new_row.update(zip(columns.keys(), values))
+
+    table_data.append(new_row)
+
+    return table_data
+
+
+def select(table_data, where_clause=None):
+    if where_clause is None:
+        return table_data
+
+    result = []
+
+    for row in table_data:
+        if all(row.get(name) == value for name, value in where_clause.items()):
+            result.append(row)
+
+    return result
+
+
+def update(table_data, set_clause, where_clause):
+    updated_ids = []
+
+    for row in table_data:
+        if all(row.get(name) == value for name, value in where_clause.items()):
+            for name, value in set_clause.items():
+                row[name] = value
+
+            updated_ids.append(row["ID"])
+
+    return table_data, updated_ids
+
+
+def delete(table_data, where_clause):
+    deleted_ids = []
+    new_data = []
+
+    for row in table_data:
+        if all(row.get(name) == value for name, value in where_clause.items()):
+            deleted_ids.append(row["ID"])
+        else:
+            new_data.append(row)
+
+    return new_data, deleted_ids
