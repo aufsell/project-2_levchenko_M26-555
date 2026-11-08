@@ -1,6 +1,11 @@
 import unittest
 
-from primitive_db.parser import parse_insert, parse_set, parse_where
+from primitive_db.parser import (
+    parse_insert,
+    parse_set,
+    parse_where,
+    split_outside_quotes,
+)
 
 
 class TestParser(unittest.TestCase):
@@ -35,6 +40,28 @@ class TestParser(unittest.TestCase):
     def test_set(self):
         result = parse_set("age = 30")
         self.assertEqual(result, {"age": 30})
+
+    def test_split_where_inside_string(self):
+        command = 'update users set name = "Ivan where Petr" where ID = 1'
+
+        _, set_part = split_outside_quotes(command, " set ")
+        set_part, where_part = split_outside_quotes(set_part, " where ")
+
+        self.assertEqual(set_part, 'name = "Ivan where Petr"')
+        self.assertEqual(where_part, "ID = 1")
+
+    def test_split_escaped_quotes(self):
+        command = 'update users set name = "Ivan \\"where\\" Petr" where ID = 1'
+
+        _, set_part = split_outside_quotes(command, " set ")
+        set_part, where_part = split_outside_quotes(set_part, " where ")
+
+        self.assertEqual(set_part, 'name = "Ivan \\"where\\" Petr"')
+        self.assertEqual(where_part, "ID = 1")
+
+    def test_split_missing_separator(self):
+        with self.assertRaises(ValueError):
+            split_outside_quotes('name = "Ivan where Petr"', " where ")
 
 
 if __name__ == "__main__":

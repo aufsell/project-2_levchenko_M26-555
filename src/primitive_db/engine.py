@@ -15,7 +15,12 @@ from primitive_db.core import (
     update,
 )
 from primitive_db.decorators import create_cacher
-from primitive_db.parser import parse_insert, parse_set, parse_where
+from primitive_db.parser import (
+    parse_insert,
+    parse_set,
+    parse_where,
+    split_outside_quotes,
+)
 from primitive_db.utils import (
     load_metadata,
     load_table_data,
@@ -119,8 +124,11 @@ def run():
                 cacher = create_cacher()
                 filepath = Path("data") / f"{table_name}.json"
 
-                if filepath.exists():
-                    filepath.unlink()
+                try:
+                    if filepath.exists():
+                        filepath.unlink()
+                except OSError as error:
+                    print(f"Ошибка при удалении файла таблицы: {error}")
 
                 print(f'Таблица "{table_name}" успешно удалена')
 
@@ -199,8 +207,8 @@ def run():
                 if table_name not in metadata:
                     raise ValueError(f'Таблица "{table_name}" не существует')
 
-                set_part = user_input.split(" set ", maxsplit=1)[1]
-                set_part, where_part = set_part.split(" where ", maxsplit=1)
+                _, set_part = split_outside_quotes(user_input, " set ")
+                set_part, where_part = split_outside_quotes(set_part, " where ")
                 set_clause = parse_set(set_part)
                 where_clause = parse_where(where_part)
 

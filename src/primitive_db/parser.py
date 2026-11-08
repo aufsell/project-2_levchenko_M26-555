@@ -58,3 +58,29 @@ def parse_where(condition):
 def parse_set(condition):
     """Разбирает выражение set для обновления записи."""
     return parse_where(condition)
+
+
+def split_outside_quotes(text, separator):
+    """Разделяет строку по первому разделителю вне кавычек."""
+    in_quotes = False
+    escaped = False
+
+    for i, char in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+
+        if char == "\\" and in_quotes:
+            escaped = True
+            continue
+
+        if char == '"':
+            in_quotes = not in_quotes
+            continue
+
+        if not in_quotes and text.startswith(separator, i):
+            left = text[:i]
+            right = text[i + len(separator) :]
+            return left, right
+
+    raise ValueError(f"Не найден разделитель {separator.strip()}")
