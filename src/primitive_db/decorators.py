@@ -3,8 +3,11 @@ from functools import wraps
 
 
 def handle_db_errors(func):
+    """Обрабатывает ошибки при выполнении операций базы данных."""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
+        """Вызывает функцию и перехватывает возможные ошибки."""
         try:
             return func(*args, **kwargs)
         except FileNotFoundError:
@@ -21,9 +24,14 @@ def handle_db_errors(func):
 
 
 def confirm_action(action_name):
+    """Создаёт декоратор для подтверждения опасных операций."""
+
     def decorator(func):
+        """Принимает функцию, для которой нужно подтверждение."""
+
         @wraps(func)
         def wrapper(*args, **kwargs):
+            """Запрашивает подтверждение перед вызовом функции."""
             answer = input(f'Вы уверены, что хотите выполнить "{action_name}"? [y/n]: ')
 
             if answer.lower().strip() != "y":
@@ -38,8 +46,11 @@ def confirm_action(action_name):
 
 
 def log_time(func):
+    """Измеряет время выполнения функции."""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
+        """Вызывает функцию и выводит время её выполнения."""
         start = time.monotonic()
         result = func(*args, **kwargs)
         end = time.monotonic()
@@ -48,3 +59,19 @@ def log_time(func):
         return result
 
     return wrapper
+
+
+def create_cacher():
+    """Создаёт независимый кэш для хранения результатов запросов."""
+    cache = {}
+
+    def cache_result(key, value_func):
+        """Возвращает результат из кэша или вычисляет и сохраняет его."""
+        if key in cache:
+            return cache[key]
+
+        result = value_func()
+        cache[key] = result
+        return result
+
+    return cache_result

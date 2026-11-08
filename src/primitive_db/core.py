@@ -1,33 +1,44 @@
+from primitive_db.constants import VALID_TYPES
 from primitive_db.decorators import confirm_action, handle_db_errors, log_time
 from primitive_db.utils import load_table_data
 
 
 @handle_db_errors
 def create_table(metadata, table_name, columns):
+    """Создаёт таблицу и проверяет названия и типы её столбцов."""
+    if not table_name.isidentifier():
+        raise ValueError("Некорректное имя таблицы")
+
     table_columns = {"ID": "int"}
     seen_columns = set()
 
     if table_name in metadata:
         raise ValueError("Таблица с таким именем уже существует")
 
-    allowed_types = {"int", "str", "bool"}
     for column in columns:
         if column.count(":") != 1:
             raise ValueError(f"Некорректный формат поля {column}")
+
         name, column_type = column.strip().split(":")
         name = name.strip()
         column_type = column_type.strip()
-        if not name.strip():
+
+        if not name:
             raise ValueError(f"Пустое имя столбца: {column}")
-        if column_type not in allowed_types:
+
+        if not name.isidentifier():
+            raise ValueError(f"Некорректное имя столбца: {name}")
+
+        if column_type not in VALID_TYPES:
             raise ValueError(f"Некорректный тип поля {column_type}")
+
         if name == "ID" and column_type != "int":
             raise ValueError(f"Некорректный тип поля {column_type}")
 
         if name in seen_columns:
             raise ValueError(f"Дублируется поле {name}")
-        seen_columns.add(name)
 
+        seen_columns.add(name)
         table_columns[name] = column_type
 
     metadata[table_name] = table_columns
@@ -37,6 +48,7 @@ def create_table(metadata, table_name, columns):
 @handle_db_errors
 @confirm_action("удаление таблицы")
 def drop_table(metadata, table_name):
+    """Удаляет таблицу из метаданных после подтверждения."""
     if table_name not in metadata:
         raise ValueError(f'Таблицы с именем "{table_name}" не существует')
 
@@ -45,12 +57,14 @@ def drop_table(metadata, table_name):
 
 
 def list_tables(metadata):
+    """Возвращает список всех таблиц."""
     return list(metadata.keys())
 
 
 @handle_db_errors
 @log_time
 def insert(metadata, table_name, values):
+    """Проверяет значения и добавляет новую запись с уникальным ID."""
     if table_name not in metadata:
         raise ValueError(f'Таблица "{table_name}" не существует.')
 
@@ -88,6 +102,7 @@ def insert(metadata, table_name, values):
 @handle_db_errors
 @log_time
 def select(table_data, where_clause=None):
+    """Возвращает все записи или только подходящие под условие."""
     if where_clause is None:
         return table_data
 
@@ -102,6 +117,13 @@ def select(table_data, where_clause=None):
 
 @handle_db_errors
 def update(table_data, set_clause, where_clause):
+    """Изменяет записи по условию и возвращает их ID."""
+    if not where_clause:
+        raise ValueError("Для обновления необходимо указать условие where")
+
+    if not set_clause:
+        raise ValueError("Для обновления необходимо указать значения set")
+
     updated_ids = []
 
     for row in table_data:
@@ -117,6 +139,10 @@ def update(table_data, set_clause, where_clause):
 @handle_db_errors
 @confirm_action("удаление записей")
 def delete(table_data, where_clause):
+    """Удаляет записи по условию после подтверждения."""
+    if not where_clause:
+        raise ValueError("Для удаления необходимо указать условие where")
+
     deleted_ids = []
     new_data = []
 

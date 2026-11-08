@@ -4,6 +4,7 @@ from pathlib import Path
 import prompt
 from prettytable import PrettyTable
 
+from primitive_db.constants import META_FILE
 from primitive_db.core import (
     create_table,
     delete,
@@ -13,9 +14,9 @@ from primitive_db.core import (
     select,
     update,
 )
+from primitive_db.decorators import create_cacher
 from primitive_db.parser import parse_insert, parse_set, parse_where
 from primitive_db.utils import (
-    create_cacher,
     load_metadata,
     load_table_data,
     save_metadata,
@@ -24,6 +25,7 @@ from primitive_db.utils import (
 
 
 def print_help():
+    """Выводит справку по доступным командам базы данных."""
     print("\n***База данных***")
     print("Функции:")
     print("<command> create_table <имя> <столбец:тип> ... - создать таблицу")
@@ -39,6 +41,7 @@ def print_help():
 
 
 def run():
+    """Читает команды пользователя и выполняет операции с базой данных."""
     print_help()
     cacher = create_cacher()
 
@@ -66,7 +69,7 @@ def run():
                 if len(args) < 2:
                     raise ValueError("Для этой функции требуются минимум 2 параметра")
 
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
                 table_name = args[0]
                 columns = args[1:]
                 new_metadata = create_table(metadata, table_name, columns)
@@ -74,7 +77,7 @@ def run():
                 if new_metadata is None:
                     continue
 
-                save_metadata("db_meta.json", new_metadata)
+                save_metadata(META_FILE, new_metadata)
                 cacher = create_cacher()
                 columns_str = ", ".join(
                     f"{name}:{dtype}"
@@ -89,7 +92,7 @@ def run():
                 if args:
                     raise ValueError("Для этой функции не требуются параметры")
 
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
                 tables = list_tables(metadata)
 
                 if tables is None:
@@ -105,14 +108,14 @@ def run():
                 if len(args) != 1:
                     raise ValueError("Для этой функции требуется название таблицы")
 
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
                 table_name = args[0]
                 new_metadata = drop_table(metadata, table_name)
 
                 if new_metadata is None:
                     continue
 
-                save_metadata("db_meta.json", new_metadata)
+                save_metadata(META_FILE, new_metadata)
                 cacher = create_cacher()
                 filepath = Path("data") / f"{table_name}.json"
 
@@ -123,7 +126,7 @@ def run():
 
             elif command == "insert":
                 table_name, values = parse_insert(user_input)
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
                 table_data = insert(metadata, table_name, values)
 
                 if table_data is None:
@@ -141,7 +144,7 @@ def run():
                     raise ValueError("Некорректный формат команды select")
 
                 table_name = args[1]
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
 
                 if table_name not in metadata:
                     raise ValueError(f'Таблица "{table_name}" не существует')
@@ -191,7 +194,7 @@ def run():
                     raise ValueError("Некорректный формат команды update")
 
                 table_name = args[0]
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
 
                 if table_name not in metadata:
                     raise ValueError(f'Таблица "{table_name}" не существует')
@@ -239,7 +242,7 @@ def run():
                     raise ValueError("Некорректный формат команды delete")
 
                 table_name = args[1]
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
 
                 if table_name not in metadata:
                     raise ValueError(f'Таблица "{table_name}" не существует')
@@ -277,7 +280,7 @@ def run():
                     raise ValueError("Для этой функции требуется название таблицы")
 
                 table_name = args[0]
-                metadata = load_metadata("db_meta.json")
+                metadata = load_metadata(META_FILE)
 
                 if table_name not in metadata:
                     raise ValueError(f'Таблица "{table_name}" не существует')

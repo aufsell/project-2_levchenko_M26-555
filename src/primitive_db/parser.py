@@ -2,6 +2,7 @@ import json
 
 
 def parse_insert(user_input):
+    """Разбирает команду insert и возвращает имя таблицы и значения."""
     parts = user_input.split(maxsplit=4)
 
     if len(parts) != 5 or parts[0] != "insert" or parts[1] != "into":
@@ -31,6 +32,7 @@ def parse_insert(user_input):
 
 
 def parse_where(condition):
+    """Разбирает условие where и возвращает столбец и значение."""
     parts = condition.split("=", maxsplit=1)
 
     if len(parts) != 2:
@@ -54,4 +56,5 @@ def parse_where(condition):
 
 
 def parse_set(condition):
+    """Разбирает выражение set для обновления записи."""
     return parse_where(condition)
